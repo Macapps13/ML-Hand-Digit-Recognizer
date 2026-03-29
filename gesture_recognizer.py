@@ -1,41 +1,46 @@
-import tensorflow as tf
 import cv2
-import numpy as np
+import mediapipe as mp
 
-model = tf.keras.models.load_model('model.h5')
+mp_hands = mp.solutions.hands
+hands = mp_hands.hands()
+mp_draw = mp.solutions.drawing_utils
+
+tip_ids = [4, 8, 12, 16, 20]
 
 cap = cv2.VideoCapture(0)
-cv2.startWindowThread()
 
-while True:
-    ret, frame = cap.read()
-    if not ret: break
+while cap.isOpened():
+    success, img = cap.read()
+    img_rgb = cv2.cvtColor(img, cv2.COLORBGR2RGB)
+    results = hands.process(img_rgb)
 
-    height, width, _ = frame.shape
-    size = 300
-    x1, y1 = (width - size) // 2, (height - size) // 2
-    x2, y2 = x1 + size, y1 + size
+    if results.multi_hand_landmarks:
+        for hand_landmarks in results.multi_hand_landmarks:
+            mp_draw.draw_landmarks(img, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-    roi = frame[y1:y2, x1:x2]
+            landmarks = hand_landmarks.landmark
+            fingers = []
 
-    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-    gray = cv2.bitwise_not(gray)
-    img_resized = cv2.resize(gray, (28, 28))
-    img_final = img_resized / 255.0
-    img_final = img_final.reshape(1, 28, 28)
+            if landmarks[tip_ids[0]].x < landmarks[tip_ids[0] - 1].x:
+                fingers.append(1)
+            else:
+                fingers.append(0)
+            
+            for i in range(1, 5):
+                if landmarks[tip_ids[i]].y < landmarks[tip_ids[i] - 2].y:
+                    fingers.append(1)
+                else:
+                    fingers.append(0)
+            
+            total_fingers = fingers.count(1)
 
-    prediction = model.predict(img_final, verbose=0)
-    digit = np.argmax(prediction)
-    confidence = np.max(prediction)
-
-    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-    label = f"Digit: {digit} ({confidence*100:.2f}%)"
-    cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-
-    cv2.imshow("Gesture Control Input", frame)
-
+            cv2.rectangle(img, (20, 20), (170, 120), (0, 255, 0), cv2.FILLED)
+            cv2.putText(img, str(total_fingers), (45, 100), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 0, 0), 5)
+        
+    cv2.imshow("Hand Gesture Recognition", img)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
 cap.release()
-cv2.destroyAllWindows() 
+cv2.destroyAllWindows()
+            
